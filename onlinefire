@@ -1,0 +1,96 @@
+#! /bin/bash
+IP="xxx.xxx.xxx.xxx"
+USER="xxx"
+VER="HEAD"
+if [ -f /tmp/abcdefg ]; then
+    echo -e "some one is building....please wait\n"
+    exit
+fi
+touch /tmp/abcdefg
+rm -rf /tmp/buildtmp/online-oasis
+trap 'echo exiting..; rm -rf /tmp/abcdefg; exit' SIGINT SIGQUIT EXIT
+#echo "clone git master.....\n"
+mkdir /tmp/buildtmp/online-oasis
+cd /tmp/buildtmp/oasis
+isGitRepo=`git status` 
+if [ "x$isGitRepo" = "x" ]; then
+    echo -e "Not a git repo!\n"
+    exit 1
+fi
+echo -e "fire which branch ? (default is master):"
+read  branch
+if [ "x$branch" != "x" ];then
+    brs=`git branch |xargs`
+    isValidBr=`echo $brs |grep $branch`
+    if [ "x$isValidBr" = "x" ];then
+        echo -e "invalid branch name"
+        exit 1;
+    fi
+fi 
+if [ "x$branch" = "x" ];then
+    branch="master"
+fi
+
+git checkout $branch 
+isGitRepo=`git status` 
+isMaster=`echo $isGitRepo|grep "On branch $branch"`
+if [ "x$isMaster" = "x" ]; then
+    echo -e "git repo not on $branch!"
+    exit 1
+fi
+git pull
+echo -e "fire which $branch version? (default is HEAD):"
+read version
+if [ "x$version" != "x" ];then
+    git show $version
+    echo -e "\n continue....\n"
+    read togo
+    if [ "x$togo" != "xy" ]; then
+        echo -e "abort !"
+        exit 1
+    fi
+fi
+if [ "x$version" = "x" ];then
+    version="HEAD"
+fi
+
+git archive $version| (cd /tmp/buildtmp/online-oasis/ && tar xf -)
+
+echo -e "begin to grunt js file...\n"
+mv /home/jack/frontend-need/node_modules /tmp/buildtmp/online-oasis/
+cd /tmp/buildtmp/online-oasis
+npm install
+
+/home/jack/node/bin/grunt release_update
+mv /tmp/buildtmp/online-oasis/node_modules /home/jack/frontend-need
+
+cp -r /tmp/buildtmp/online-oasis/html_build/* /tmp/buildtmp/online-oasis/html/
+
+rm -rf html_build Gruntfile.js package.json README _notes script email_template admin
+ls .
+tar cf oasis.tar *
+
+echo -e "sync file to $IP (y|n)?\n"
+read answer
+if [ "x$answer" != "xy" ]; then
+    echo -e "abort sync !"
+    exit 1
+fi
+    
+ssh $USER@$IP 'rm -rf /tmp/code/oasis.drsoon.com; mkdir /tmp/code/oasis.drsoon.com'
+scp -r /tmp/buildtmp/online-oasis/oasis.tar $USER@$IP:/tmp/code/oasis.drsoon.com
+
+echo -e "deliver file on $IP (y|n)?\n"
+read answer
+if [ "x$answer" != "xy" ]; then
+    echo -e "abort deliver!"
+    exit 1
+fi
+
+ssh $USER@$IP 'cd /tmp/code/oasis.drsoon.com; tar xf oasis.tar; rm oasis.tar; rm -rf /tmp/code/bak/oasis.old; cp -r /tmp/code/oasis.drsoon.com/php_tools/* /var/drsoon_tool/php_tools/; cp -r /tmp/code/oasis.drsoon.com/opus_2_aac/* /var/drsoon_tool/opus_2_aac/; cp -r /tmp/code/oasis.drsoon.com/sendsms/* /var/drsoon_tool/sendsms; cp -r /tmp/code/oasis.drsoon.com/converter/* /var/drsoon_tool/ppt_2_jpg/; rm -rf php_tools opus_2_aac sendsms converter; cp -r /var/www/oasis/update /tmp/code/; mv /var/www/oasis /tmp/code/bak/oasis.old; mv /tmp/code/oasis.drsoon.com /var/www/oasis; mv /tmp/code/update /var/www/oasis/'
+echo -e "\nsync to $IP Done!\n"
+
+cd /tmp/buildtmp/oasis
+t=`date +%Y-%m-%d-%H_%M_%S`
+git tag   "release_v$t" 
+git push origin --tags
