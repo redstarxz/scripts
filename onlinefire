@@ -43,7 +43,7 @@ echo -e "fire which $branch version? (default is HEAD):"
 read version
 if [ "x$version" != "x" ];then
     git show $version
-    echo -e "\n continue....\n"
+    echo -e "\n continue(y|n)....\n"
     read togo
     if [ "x$togo" != "xy" ]; then
         echo -e "abort !"
